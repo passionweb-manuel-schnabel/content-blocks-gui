@@ -17,11 +17,12 @@ declare(strict_types=1);
 
 namespace FriendsOfTYPO3\ContentBlocksGui\Service;
 
-use TYPO3\CMS\Core\Package\PackageManager;
-use TYPO3\CMS\Core\Utility\GeneralUtility;
+use FriendsOfTYPO3\ContentBlocksGui\Utility\ContentBlocksUtility;
+use Symfony\Component\Yaml\Yaml;
 use TYPO3\CMS\ContentBlocks\Basics\BasicsLoader;
 use TYPO3\CMS\ContentBlocks\Basics\BasicsRegistry;
-use Symfony\Component\Yaml\Yaml;
+use TYPO3\CMS\Core\Package\PackageManager;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 /**
  * Service to manage Basics (field mixins/partials)
@@ -31,6 +32,8 @@ use Symfony\Component\Yaml\Yaml;
  */
 final class BasicsService
 {
+    use FieldCleanupTrait;
+
     public function __construct(
         protected readonly PackageManager $packageManager,
         protected BasicsRegistry $basicsRegistry,
@@ -81,7 +84,7 @@ final class BasicsService
         if (!$registry->hasBasic($identifier)) {
             throw new \RuntimeException(
                 sprintf('Basic "%s" not found', $identifier),
-                1734000001
+                1734000001,
             );
         }
 
@@ -107,7 +110,7 @@ final class BasicsService
         if (!$this->basicsRegistry->hasBasic($identifier)) {
             throw new \RuntimeException(
                 sprintf('Basic "%s" not found', $identifier),
-                1734100001
+                1734100001,
             );
         }
 
@@ -149,7 +152,7 @@ final class BasicsService
                 if ($this->basicsRegistry->hasBasic($identifier)) {
                     return [
                         'success' => false,
-                        'message' => sprintf('Basic "%s" already exists. Please use a different identifier.', $identifier)
+                        'message' => sprintf('Basic "%s" already exists. Please use a different identifier.', $identifier),
                     ];
                 }
 
@@ -158,7 +161,7 @@ final class BasicsService
                 if (file_exists($basicsPath)) {
                     return [
                         'success' => false,
-                        'message' => sprintf('Basic file already exists at "%s". Please use a different identifier.', $basicsPath)
+                        'message' => sprintf('Basic file already exists at "%s". Please use a different identifier.', $basicsPath),
                     ];
                 }
 
@@ -177,8 +180,8 @@ final class BasicsService
                         'success' => true,
                         'message' => sprintf(
                             'Warning: Basic "%s" was not found and has been recreated. Please verify this is intended.',
-                            $identifier
-                        )
+                            $identifier,
+                        ),
                     ];
                 }
 
@@ -188,12 +191,12 @@ final class BasicsService
 
             return [
                 'success' => true,
-                'message' => sprintf('Basic "%s" saved successfully.', $identifier)
+                'message' => sprintf('Basic "%s" saved successfully.', $identifier),
             ];
         } catch (\Exception $e) {
             return [
                 'success' => false,
-                'message' => sprintf('Failed to save Basic: %s', $e->getMessage())
+                'message' => sprintf('Failed to save Basic: %s', $e->getMessage()),
             ];
         }
     }
@@ -221,16 +224,16 @@ final class BasicsService
     }
 
     /**
-     * Find existing Basic file path
+     * Find existing Basic file path by scanning recursively for the matching identifier.
      *
-     * Searches in root Basics/ and subdirectories (ContentElements, PageTypes, RecordTypes)
+     * Basics can live in any subdirectory under ContentBlocks/Basics/,
+     * and the filename does not need to match the identifier.
      *
      * @param string $identifier Full identifier (Vendor/Name)
      * @return string|null Absolute file path or null if not found
      */
     protected function findBasicPath(string $identifier): ?string
     {
-        // Load registry to get Basic
         if (!$this->basicsRegistry->hasBasic($identifier)) {
             return null;
         }
@@ -240,24 +243,7 @@ final class BasicsService
         $package = $this->packageManager->getPackage($extension);
         $basicsDir = $package->getPackagePath() . 'ContentBlocks/Basics';
 
-        $filename = str_replace('/', '-', $identifier) . '.yaml';
-
-        // Check possible locations
-        // @todo: if we search recursively, this is not needed since the Path in Basics can be anything
-        $possiblePaths = [
-            $basicsDir . '/' . $filename,  // Root
-            $basicsDir . '/ContentElements/' . $filename,
-            $basicsDir . '/PageTypes/' . $filename,
-            $basicsDir . '/RecordTypes/' . $filename,
-        ];
-
-        foreach ($possiblePaths as $path) {
-            if (file_exists($path)) {
-                return $path;
-            }
-        }
-
-        return null;
+        return ContentBlocksUtility::findBasicFilePath($basicsDir, $identifier);
     }
 
     /**
@@ -287,34 +273,9 @@ final class BasicsService
         if ($result === false) {
             throw new \RuntimeException(
                 sprintf('Failed to write Basic YAML file to "%s"', $filePath),
-                1734100002
+                1734100002,
             );
         }
-    }
-
-    /**
-     * Recursively clean UI-only properties from fields
-     * Removes properties that are only used in the frontend and should not be saved
-     *
-     * @param mixed $data Field data (array, nested arrays, or scalar)
-     * @return mixed Cleaned data
-     */
-    protected function cleanFieldsForSave($data)
-    {
-        if (is_array($data)) {
-            $cleaned = [];
-            foreach ($data as $key => $value) {
-                // Skip UI-only properties
-                if ($key === '_validation' || $key === '_isBaseField') {
-                    continue;
-                }
-                // Recursively clean nested structures
-                $cleaned[$key] = $this->cleanFieldsForSave($value);
-            }
-            return $cleaned;
-        }
-
-        return $data;
     }
 
     /**
@@ -337,7 +298,7 @@ final class BasicsService
         if (!$validationResult['valid']) {
             throw new \RuntimeException(
                 $validationResult['error'] ?? 'Validation failed',
-                1734000005
+                1734000005,
             );
         }
 
@@ -365,7 +326,7 @@ final class BasicsService
         if ($result === false) {
             throw new \RuntimeException(
                 sprintf('Failed to write Basic "%s"', $identifier),
-                1734000006
+                1734000006,
             );
         }
     }
@@ -385,15 +346,15 @@ final class BasicsService
         if ($vendor === 'TYPO3') {
             throw new \RuntimeException(
                 sprintf('Cannot delete core Basic "%s"', $identifier),
-                1734000007
+                1734000007,
             );
         }
 
-        $basicPath = $this->findBasicPath($vendor, $name);
+        $basicPath = $this->findBasicPath($identifier);
         if ($basicPath === null) {
             throw new \RuntimeException(
                 sprintf('Basic "%s" not found', $identifier),
-                1734000008
+                1734000008,
             );
         }
 
@@ -401,7 +362,7 @@ final class BasicsService
         if (!$result) {
             throw new \RuntimeException(
                 sprintf('Failed to delete Basic "%s"', $identifier),
-                1734000009
+                1734000009,
             );
         }
     }
@@ -423,7 +384,7 @@ final class BasicsService
                 'valid' => false,
                 'error' => sprintf(
                     'Circular reference detected in Basic "%s"',
-                    $identifier
+                    $identifier,
                 ),
             ];
         }
@@ -465,8 +426,8 @@ final class BasicsService
                     // Recursively check the referenced Basic
                     if ($this->detectCircularReference(
                         $referencedBasicId,
-                        $referencedBasic['fields'] ?? [],
-                        $chain
+                        $referencedBasic['fields'],
+                        $chain,
                     )) {
                         return true;
                     }
@@ -556,7 +517,7 @@ final class BasicsService
         if (count($parts) !== 2) {
             throw new \InvalidArgumentException(
                 sprintf('Invalid Basic identifier format: "%s". Expected "Vendor/Name"', $identifier),
-                1734000010
+                1734000010,
             );
         }
 
