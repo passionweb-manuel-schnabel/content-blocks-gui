@@ -73,7 +73,7 @@ This extension requires the Content Blocks extension:
 Require this package via Composer:
 
 ```
-composer require friendsoftypo3/content-blocks-gui
+composer require --dev friendsoftypo3/content-blocks-gui
 ```
 
 Or install it via the Extension Manager in the TYPO3 backend. The extension key
